@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Baby Name Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --accent-50: #F0F4FE;
+    --accent-100: #D8E3FB;
+    --accent-200: #B3C8F7;
+    --accent-400: #6B96EE;
+    --accent-600: #3D6DD6;
+    --accent-800: #1E3F8A;
+    --accent-900: #0F2150;
+    --text: #1a1f2e;
+    --text-muted: #556070;
+    --text-light: #8a97aa;
+    --bg: #f9fbff;
+    --card-bg: #ffffff;
+    --border: rgba(80,110,200,0.12);
+    --border-hover: rgba(80,110,200,0.25);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .site-header {
+    background: var(--accent-50);
+    border-bottom: 1px solid var(--accent-100);
+    padding: 2.5rem 1.5rem 2rem;
+    text-align: center;
+  }
+  .site-header .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-600);
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+  .site-header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 400;
+    color: var(--accent-800);
+    line-height: 1.2;
+  }
+  .site-header h1 em {
+    font-style: italic;
+    color: var(--accent-600);
+  }
+  .site-header p {
+    margin-top: 0.6rem;
+    font-size: 14px;
+    color: var(--text-muted);
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Layout */
+  .container {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+
+  /* Submit form */
+  .submit-card {
+    background: var(--card-bg);
+    border: 1px solid var(--accent-100);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .submit-card h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--accent-800);
+    margin-bottom: 1rem;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .form-grid.full { grid-template-columns: 1fr; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .field input, .field textarea {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--accent-50);
+    border: 1px solid var(--accent-100);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    resize: none;
+  }
+  .field input:focus, .field textarea:focus {
+    border-color: var(--accent-400);
+    background: #fff;
+  }
+  .field .req { color: var(--accent-400); }
+  .error-msg {
+    font-size: 12px;
+    color: #c0392b;
+    margin-bottom: 8px;
+    display: none;
+  }
+  .submit-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+    background: var(--accent-600);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 9px 22px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .submit-btn:hover { background: var(--accent-800); }
+  .submit-btn:active { transform: scale(0.98); }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .controls-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-right: 2px;
+  }
+  .sort-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid var(--border-hover);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sort-btn:hover { border-color: var(--accent-400); color: var(--accent-600); }
+  .sort-btn.active {
+    background: var(--accent-600);
+    border-color: var(--accent-600);
+    color: #fff;
+  }
+  .count-badge {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-light);
+  }
+
+  /* Name cards */
+  .name-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+  }
+  .name-card:hover { border-color: var(--border-hover); }
+
+  .card-top { display: flex; gap: 14px; align-items: flex-start; }
+
+  .vote-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 34px;
+    padding-top: 2px;
+  }
+  .vote-btn {
+    width: 28px; height: 26px;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .vote-btn:hover { border-color: var(--accent-400); color: var(--accent-600); }
+  .vote-btn.up.on { background: var(--accent-50); border-color: var(--accent-200); color: var(--accent-600); }
+  .vote-btn.down.on { background: #fff5f5; border-color: #ffc8c8; color: #c0392b; }
+  .vote-score {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .card-body { flex: 1; min-width: 0; }
+  .card-name-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .card-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--accent-800);
+  }
+  .origin-pill {
+    font-size: 11px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: var(--accent-50);
+    color: var(--accent-600);
+    border: 1px solid var(--accent-100);
+    white-space: nowrap;
+  }
+  .card-by { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+  .card-note { font-size: 13px; color: var(--text-muted); margin-top: 6px; line-height: 1.55; }
+
+  /* Comments */
+  .comments-toggle {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--accent-600);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    margin-top: 8px;
+    display: inline-block;
+  }
+  .comments-toggle:hover { color: var(--accent-800); }
+  .comments-area {
+    margin-top: 10px;
+    border-top: 1px solid var(--accent-100);
+    padding-top: 10px;
+  }
+  .comment-item {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    line-height: 1.5;
+  }
+  .comment-item strong { font-weight: 500; color: var(--text); }
+  .comment-form { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .comment-form input {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    outline: none;
+    background: var(--accent-50);
+    color: var(--text);
+    transition: border-color 0.15s;
+  }
+  .comment-form input:focus { border-color: var(--accent-400); background: #fff; }
+  .comment-form .inp-who { width: 120px; }
+  .comment-form .inp-text { flex: 1; min-width: 140px; }
+  .comment-post-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 1px solid var(--accent-200);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--accent-600);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .comment-post-btn:hover { background: var(--accent-50); }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-light);
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 16px;
+  }
+
+  /* Confetti canvas */
+  #confetti-canvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Origin loading indicator */
+  .origin-loading {
+    font-size: 11px;
+    color: var(--accent-400);
+    font-style: italic;
+    margin-top: 2px;
+    display: none;
+  }
+
+  /* Footer */
+  .site-footer {
+    text-align: center;
+    padding: 1.5rem;
+    font-size: 12px;
+    color: var(--text-light);
+    border-top: 1px solid var(--accent-100);
+  }
+
+  @media (max-width: 480px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .comment-form .inp-who { width: 100px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="confetti-canvas"></canvas>
+
+<header class="site-header">
+  <p class="eyebrow">We're expecting</p>
+  <h1>Help us name our <em>baby</em></h1>
+  <p>Suggest a name, vote for your favourites, and leave a note for why you love it.</p>
+</header>
+
+<main class="container">
+
+  <!-- Submit form -->
+  <div class="submit-card">
+    <h2>Suggest a name</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label>Baby name <span class="req">*</span></label>
+        <input id="inp-name" type="text" placeholder="e.g. Avery" maxlength="40" />
+      </div>
+      <div class="field">
+        <label>Your name <span class="req">*</span></label>
+        <input id="inp-who" type="text" placeholder="e.g. Auntie Sarah" maxlength="40" />
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Origin / meaning</label>
+        <input id="inp-origin" type="text" placeholder="e.g. Latin — beloved" maxlength="60" />
+        <span class="origin-loading" id="origin-loading">Looking up meaning...</span>
+      </div>
+      <div class="field">
+        <label>Why this name?</label>
+        <input id="inp-note" type="text" placeholder="e.g. runs in the family, reminds me of..." maxlength="100" />
+      </div>
+    </div>
+    <div id="form-error" class="error-msg"></div>
+    <button class="submit-btn" onclick="submitName()">Add name</button>
+  </div>
+
+  <!-- Sort controls -->
+  <div class="controls">
+    <span class="controls-label">Sort:</span>
+    <button class="sort-btn active" id="sort-votes" onclick="setSort('votes')">Most voted</button>
+    <button class="sort-btn" id="sort-new" onclick="setSort('new')">Newest</button>
+    <button class="sort-btn" id="sort-alpha" onclick="setSort('alpha')">A – Z</button>
+    <span class="count-badge" id="count-label"></span>
+  </div>
+
+  <!-- Names list -->
+  <div id="names-list"></div>
+
+</main>
+
+<footer class="site-footer">Made with love for our little one &hearts;</footer>
+
+<script>
+let names = JSON.parse(localStorage.getItem('babynames_v1') || 'null') || [
+  { id:1, name:"Avery", who:"Grandma Rose", origin:"English — ruler of the elves", note:"Works beautifully for any child", votes:3, userVote:0, comments:[{who:"Dad",text:"Love this one!"},{who:"Auntie Jess",text:"So elegant"}], open:false },
+  { id:2, name:"River", who:"Uncle Tom", origin:"English — flowing water", note:"A nature name that feels timeless", votes:2, userVote:0, comments:[{who:"Mum",text:"Really love the sound of this"}], open:false },
+  { id:3, name:"Rowan", who:"Cousin Mia", origin:"Celtic — little red one", note:"Strong and gentle at the same time", votes:1, userVote:0, comments:[], open:false }
+];
+let nextId = Math.max(...names.map(n=>n.id), 3) + 1;
+let sortMode = "votes";
+let originLookupTimer = null;
+
+function save() { localStorage.setItem('babynames_v1', JSON.stringify(names)); }
+
+function setSort(mode) {
+  sortMode = mode;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sort-' + mode).classList.add('active');
+  render();
+}
+
+function sorted() {
+  let list = [...names];
+  if (sortMode === "votes") return list.sort((a,b) => b.votes - a.votes);
+  if (sortMode === "new") return list.sort((a,b) => b.id - a.id);
+  return list.sort((a,b) => a.name.localeCompare(b.name));
+}
+
+function vote(id, dir) {
+  const n = names.find(x => x.id === id);
+  if (!n) return;
+  if (n.userVote === dir) { n.votes -= dir; n.userVote = 0; }
+  else { n.votes += dir - n.userVote; n.userVote = dir; }
+  save(); render();
+}
+
+function toggleComments(id) {
+  const n = names.find(x => x.id === id);
+  if (n) { n.open = !n.open; render(); }
+}
+
+function addComment(id) {
+  const who = document.getElementById('cwho-' + id).value.trim();
+  const text = document.getElementById('ctxt-' + id).value.trim();
+  if (!who || !text) return;
+  const n = names.find(x => x.id === id);
+  if (n) { n.comments.push({who, text}); n.open = true; save(); render(); }
+}
+
+/* ── Origin auto-lookup ── */
+const originDB = {
+  avery:"English — ruler of the elves", river:"English — flowing water",
+  rowan:"Celtic — little red one", quinn:"Irish — wisdom, reason",
+  sage:"Latin — wise, healing herb", alex:"Greek — defender of the people",
+  charlie:"Germanic — free person", riley:"Irish — courageous",
+  morgan:"Welsh — sea circle", jordan:"Hebrew — to flow down",
+  casey:"Irish — brave in battle", drew:"Greek — strong, manly",
+  cameron:"Scottish — crooked nose", dakota:"Sioux — friend, ally",
+  skylar:"Dutch — scholar", reagan:"Irish — little ruler",
+  finley:"Scottish — fair warrior", elliot:"Greek — the Lord is my God",
+  blake:"English — dark or fair", hayden:"English — heathered hill",
+  phoenix:"Greek — dark red, reborn", eden:"Hebrew — place of pleasure",
+  emery:"Germanic — brave, powerful", lennon:"Irish — dear one",
+  remy:"French — oarsman", parker:"English — park keeper",
+  jamie:"Hebrew — supplanter", justice:"English — righteous, fair",
+  rain:"English — abundant blessings", lake:"English — body of water",
+  wren:"English — small bird", lark:"English — songbird",
+  ash:"English — ash tree", bay:"English — inlet of water",
+  kit:"Greek — pure", lee:"English — meadow, clearing",
+  robin:"English — bright fame", sable:"French — black",
+  sterling:"English — genuine, of high quality", true:"English — faithful",
+  vale:"Latin — valley", winter:"English — the cold season",
+  zenith:"English — highest point", zephyr:"Greek — west wind",
+  olivia:"Latin — olive tree", emma:"Germanic — whole, universal",
+  liam:"Irish — strong-willed warrior", noah:"Hebrew — rest, comfort",
+  oliver:"Latin — olive tree", elijah:"Hebrew — my God is the Lord",
+  james:"Hebrew — supplanter", aurora:"Latin — dawn",
+  luna:"Latin — moon", aria:"Italian — air, song"
+};
+
+function lookupOrigin(nameVal) {
+  const originInp = document.getElementById('inp-origin');
+  const loadingEl = document.getElementById('origin-loading');
+  if (!nameVal || originInp.value.trim()) return;
+  const key = nameVal.toLowerCase().trim();
+  const match = originDB[key];
+  if (match) {
+    loadingEl.style.display = 'block';
+    loadingEl.textContent = 'Looking up meaning...';
+    setTimeout(() => {
+      if (!originInp.value.trim()) originInp.value = match;
+      loadingEl.style.display = 'none';
+    }, 600);
+  }
+}
+
+document.getElementById('inp-name').addEventListener('input', function() {
+  clearTimeout(originLookupTimer);
+  const val = this.value.trim();
+  if (val.length >= 3) {
+    originLookupTimer = setTimeout(() => lookupOrigin(val), 500);
+  }
+});
+
+/* ── Confetti ── */
+const canvas = document.getElementById('confetti-canvas');
+const ctx = canvas.getContext('2d');
+let confettiParticles = [];
+let confettiFrame = null;
+
+const confettiColors = ['#B3C8F7','#6B96EE','#3D6DD6','#D8E3FB','#1E3F8A','#f0f4fe','#ffffff','#a8d8b0','#f7c97e'];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function launchConfetti() {
+  confettiParticles = [];
+  for (let i = 0; i < 120; i++) {
+    confettiParticles.push({
+      x: Math.random() * canvas.width,
+      y: -10 - Math.random() * 200,
+      w: 6 + Math.random() * 8,
+      h: 3 + Math.random() * 5,
+      color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+      angle: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.2,
+      vx: (Math.random() - 0.5) * 3,
+      vy: 2 + Math.random() * 4,
+      opacity: 1
+    });
+  }
+  if (confettiFrame) cancelAnimationFrame(confettiFrame);
+  animateConfetti();
+}
+
+function animateConfetti() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  confettiParticles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.angle += p.spin;
+    p.vy += 0.05;
+    if (p.y > canvas.height * 0.7) p.opacity -= 0.025;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.opacity);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.restore();
+  });
+  confettiParticles = confettiParticles.filter(p => p.opacity > 0);
+  if (confettiParticles.length > 0) {
+    confettiFrame = requestAnimationFrame(animateConfetti);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+/* ── Submit ── */
+function submitName() {
+  const nameVal = document.getElementById('inp-name').value.trim();
+  const whoVal = document.getElementById('inp-who').value.trim();
+  const err = document.getElementById('form-error');
+  if (!nameVal || !whoVal) { err.textContent = 'Please enter a name and your name.'; err.style.display = 'block'; return; }
+  if (names.find(n => n.name.toLowerCase() === nameVal.toLowerCase())) {
+    err.textContent = 'That name has already been suggested!'; err.style.display = 'block'; return;
+  }
+  err.style.display = 'none';
+  names.push({
+    id: nextId++,
+    name: nameVal,
+    who: whoVal,
+    origin: document.getElementById('inp-origin').value.trim(),
+    note: document.getElementById('inp-note').value.trim(),
+    votes: 0, userVote: 0, comments: [], open: false
+  });
+  ['inp-name','inp-who','inp-origin','inp-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('origin-loading').style.display = 'none';
+  save();
+  render();
+  launchConfetti();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function render() {
+  const list = sorted();
+  const el = document.getElementById('names-list');
+  document.getElementById('count-label').textContent = list.length + ' name' + (list.length !== 1 ? 's' : '');
+  if (!list.length) { el.innerHTML = '<div class="empty">No names yet — be the first to suggest one!</div>'; return; }
+
+  el.innerHTML = list.map(n => {
+    const upOn = n.userVote === 1 ? 'on' : '';
+    const downOn = n.userVote === -1 ? 'on' : '';
+    const commentCount = n.comments.length;
+    const commentLabel = n.open
+      ? 'Hide comments'
+      : (commentCount ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Add a comment');
+
+    const commentsHtml = n.open ? `
+      <div class="comments-area">
+        ${commentCount
+          ? n.comments.map(c => `<div class="comment-item"><strong>${esc(c.who)}:</strong> ${esc(c.text)}</div>`).join('')
+          : '<div class="comment-item" style="font-style:italic;color:var(--text-light)">No comments yet</div>'}
+        <div class="comment-form">
+          <input class="inp-who" id="cwho-${n.id}" placeholder="Your name" maxlength="30" />
+          <input class="inp-text" id="ctxt-${n.id}" placeholder="Write a comment..." maxlength="140"
+            onkeydown="if(event.key==='Enter')addComment(${n.id})" />
+          <button class="comment-post-btn" onclick="addComment(${n.id})">Post</button>
+        </div>
+      </div>` : '';
+
+    return `<div class="name-card">
+      <div class="card-top">
+        <div class="vote-col">
+          <button class="vote-btn up ${upOn}" onclick="vote(${n.id},1)" title="Upvote">▲</button>
+          <span class="vote-score">${n.votes}</span>
+          <button class="vote-btn down ${downOn}" onclick="vote(${n.id},-1)" title="Downvote">▼</button>
+        </div>
+        <div class="card-body">
+          <div class="card-name-row">
+            <span class="card-name">${esc(n.name)}</span>
+            ${n.origin ? `<span class="origin-pill">${esc(n.origin)}</span>` : ''}
+          </div>
+          <div class="card-by">Suggested by ${esc(n.who)}</div>
+          ${n.note ? `<div class="card-note">${esc(n.note)}</div>` : ''}
+          <button class="comments-toggle" onclick="toggleComments(${n.id})">${commentLabel}</button>
+        </div>
+      </div>
+      ${commentsHtml}
+    </div>`;
+  }).join('');
+}
+
+render();
+</script>
+</body>
+</html>
