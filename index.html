@@ -396,18 +396,75 @@
 
 <footer class="site-footer">Made with love for our little one &hearts;</footer>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-let names = JSON.parse(localStorage.getItem('babynames_v1') || 'null') || [
-  { id:1, name:"Avery", who:"Grandma Rose", origin:"English — ruler of the elves", note:"Works beautifully for any child", votes:3, userVote:0, comments:[{who:"Dad",text:"Love this one!"},{who:"Auntie Jess",text:"So elegant"}], open:false },
-  { id:2, name:"River", who:"Uncle Tom", origin:"English — flowing water", note:"A nature name that feels timeless", votes:2, userVote:0, comments:[{who:"Mum",text:"Really love the sound of this"}], open:false },
-  { id:3, name:"Rowan", who:"Cousin Mia", origin:"Celtic — little red one", note:"Strong and gentle at the same time", votes:1, userVote:0, comments:[], open:false }
-];
-let nextId = Math.max(...names.map(n=>n.id), 3) + 1;
-let sortMode = "votes";
+/* ── SUPABASE CONFIG — replace these two values ── */
+const SUPABASE_URL  = https://xupmiduwbtqytvysdput.supabase.co;   /* e.g. https://xyzabc.supabase.co  */
+const SUPABASE_ANON = sb_publishable_jcBNoK_28AKyL0-am0kk9g_erlJHzhA;
+/* ─────────────────────────────────────────────── */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* Session ID — identifies this browser for voting (stored in localStorage) */
+let sessionId = localStorage.getItem('baby_session_id');
+if (!sessionId) {
+  sessionId = crypto.randomUUID();
+  localStorage.setItem('baby_session_id', sessionId);
+}
+
+let names = [];       /* populated from Supabase on load */
+let sortMode = 'votes';
 let originLookupTimer = null;
 
-function save() { localStorage.setItem('babynames_v1', JSON.stringify(names)); }
+/* ── Loading state ── */
+function setLoading(on) {
+  document.getElementById('names-list').innerHTML = on
+    ? '<div class="empty">Loading names...</div>' : '';
+}
 
+/* ── Fetch all names + their comments + this session's votes ── */
+async function loadNames() {
+  setLoading(true);
+  const [{ data: nameRows, error: nameErr },
+         { data: commentRows },
+         { data: voteRows }] = await Promise.all([
+    sb.from('names').select('*'),
+    sb.from('comments').select('*').order('created_at', { ascending: true }),
+    sb.from('votes').select('*').eq('session_id', sessionId)
+  ]);
+
+  if (nameErr) {
+    document.getElementById('names-list').innerHTML =
+      '<div class="empty">Could not connect to database. Check your Supabase credentials.</div>';
+    return;
+  }
+
+  const voteMap = {};
+  (voteRows || []).forEach(v => { voteMap[v.name_id] = v.direction; });
+
+  const commentMap = {};
+  (commentRows || []).forEach(c => {
+    if (!commentMap[c.name_id]) commentMap[c.name_id] = [];
+    commentMap[c.name_id].push({ id: c.id, who: c.author, text: c.body });
+  });
+
+  names = (nameRows || []).map(n => ({
+    id: n.id,
+    name: n.name,
+    who: n.suggested_by,
+    origin: n.origin || '',
+    note: n.note || '',
+    votes: n.votes,
+    userVote: voteMap[n.id] || 0,
+    comments: commentMap[n.id] || [],
+    open: false,
+    createdAt: n.created_at
+  }));
+
+  render();
+}
+
+/* ── Sort ── */
 function setSort(mode) {
   sortMode = mode;
   document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
@@ -417,69 +474,110 @@ function setSort(mode) {
 
 function sorted() {
   let list = [...names];
-  if (sortMode === "votes") return list.sort((a,b) => b.votes - a.votes);
-  if (sortMode === "new") return list.sort((a,b) => b.id - a.id);
-  return list.sort((a,b) => a.name.localeCompare(b.name));
+  if (sortMode === 'votes') return list.sort((a, b) => b.votes - a.votes);
+  if (sortMode === 'new')   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return list.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function vote(id, dir) {
+/* ── Vote ── */
+async function vote(id, dir) {
   const n = names.find(x => x.id === id);
   if (!n) return;
-  if (n.userVote === dir) { n.votes -= dir; n.userVote = 0; }
-  else { n.votes += dir - n.userVote; n.userVote = dir; }
-  save(); render();
+
+  const prevVote = n.userVote;
+  const newVote  = prevVote === dir ? 0 : dir;
+  const delta    = newVote - prevVote;
+
+  /* Optimistic UI update */
+  n.userVote = newVote;
+  n.votes   += delta;
+  render();
+
+  /* Delete any existing vote for this session + name */
+  await sb.from('votes').delete()
+    .eq('name_id', id).eq('session_id', sessionId);
+
+  /* Insert new vote if not un-voting */
+  if (newVote !== 0) {
+    await sb.from('votes').insert({ name_id: id, session_id: sessionId, direction: newVote });
+  }
+
+  /* Update vote count on the names row */
+  const { error } = await sb.from('names').update({ votes: n.votes }).eq('id', id);
+  if (error) {
+    /* Roll back on failure */
+    n.userVote = prevVote;
+    n.votes   -= delta;
+    render();
+  }
 }
 
+/* ── Comments ── */
 function toggleComments(id) {
   const n = names.find(x => x.id === id);
   if (n) { n.open = !n.open; render(); }
 }
 
-function addComment(id) {
-  const who = document.getElementById('cwho-' + id).value.trim();
-  const text = document.getElementById('ctxt-' + id).value.trim();
+async function addComment(id) {
+  const whoEl  = document.getElementById('cwho-' + id);
+  const textEl = document.getElementById('ctxt-' + id);
+  const who  = whoEl.value.trim();
+  const text = textEl.value.trim();
   if (!who || !text) return;
-  const n = names.find(x => x.id === id);
-  if (n) { n.comments.push({who, text}); n.open = true; save(); render(); }
+
+  whoEl.disabled = textEl.disabled = true;
+
+  const { data, error } = await sb.from('comments')
+    .insert({ name_id: id, author: who, body: text })
+    .select().single();
+
+  whoEl.disabled = textEl.disabled = false;
+
+  if (!error && data) {
+    const n = names.find(x => x.id === id);
+    if (n) {
+      n.comments.push({ id: data.id, who: data.author, text: data.body });
+      n.open = true;
+      whoEl.value = textEl.value = '';
+      render();
+    }
+  }
 }
 
 /* ── Origin auto-lookup ── */
 const originDB = {
-  avery:"English — ruler of the elves", river:"English — flowing water",
-  rowan:"Celtic — little red one", quinn:"Irish — wisdom, reason",
-  sage:"Latin — wise, healing herb", alex:"Greek — defender of the people",
-  charlie:"Germanic — free person", riley:"Irish — courageous",
-  morgan:"Welsh — sea circle", jordan:"Hebrew — to flow down",
-  casey:"Irish — brave in battle", drew:"Greek — strong, manly",
-  cameron:"Scottish — crooked nose", dakota:"Sioux — friend, ally",
-  skylar:"Dutch — scholar", reagan:"Irish — little ruler",
-  finley:"Scottish — fair warrior", elliot:"Greek — the Lord is my God",
-  blake:"English — dark or fair", hayden:"English — heathered hill",
-  phoenix:"Greek — dark red, reborn", eden:"Hebrew — place of pleasure",
-  emery:"Germanic — brave, powerful", lennon:"Irish — dear one",
-  remy:"French — oarsman", parker:"English — park keeper",
-  jamie:"Hebrew — supplanter", justice:"English — righteous, fair",
-  rain:"English — abundant blessings", lake:"English — body of water",
-  wren:"English — small bird", lark:"English — songbird",
-  ash:"English — ash tree", bay:"English — inlet of water",
-  kit:"Greek — pure", lee:"English — meadow, clearing",
-  robin:"English — bright fame", sable:"French — black",
-  sterling:"English — genuine, of high quality", true:"English — faithful",
-  vale:"Latin — valley", winter:"English — the cold season",
-  zenith:"English — highest point", zephyr:"Greek — west wind",
-  olivia:"Latin — olive tree", emma:"Germanic — whole, universal",
-  liam:"Irish — strong-willed warrior", noah:"Hebrew — rest, comfort",
-  oliver:"Latin — olive tree", elijah:"Hebrew — my God is the Lord",
-  james:"Hebrew — supplanter", aurora:"Latin — dawn",
-  luna:"Latin — moon", aria:"Italian — air, song"
+  avery:'English — ruler of the elves', river:'English — flowing water',
+  rowan:'Celtic — little red one', quinn:'Irish — wisdom, reason',
+  sage:'Latin — wise, healing herb', alex:'Greek — defender of the people',
+  charlie:'Germanic — free person', riley:'Irish — courageous',
+  morgan:'Welsh — sea circle', jordan:'Hebrew — to flow down',
+  casey:'Irish — brave in battle', drew:'Greek — strong, manly',
+  cameron:'Scottish — crooked nose', dakota:'Sioux — friend, ally',
+  skylar:'Dutch — scholar', reagan:'Irish — little ruler',
+  finley:'Scottish — fair warrior', elliot:'Greek — the Lord is my God',
+  blake:'English — dark or fair', hayden:'English — heathered hill',
+  phoenix:'Greek — dark red, reborn', eden:'Hebrew — place of pleasure',
+  emery:'Germanic — brave, powerful', lennon:'Irish — dear one',
+  remy:'French — oarsman', parker:'English — park keeper',
+  jamie:'Hebrew — supplanter', justice:'English — righteous, fair',
+  rain:'English — abundant blessings', lake:'English — body of water',
+  wren:'English — small bird', lark:'English — songbird',
+  ash:'English — ash tree', bay:'English — inlet of water',
+  kit:'Greek — pure', lee:'English — meadow, clearing',
+  robin:'English — bright fame', sterling:'English — genuine, of high quality',
+  vale:'Latin — valley', winter:'English — the cold season',
+  zenith:'English — highest point', zephyr:'Greek — west wind',
+  olivia:'Latin — olive tree', emma:'Germanic — whole, universal',
+  liam:'Irish — strong-willed warrior', noah:'Hebrew — rest, comfort',
+  oliver:'Latin — olive tree', aurora:'Latin — dawn',
+  luna:'Latin — moon', aria:'Italian — air, song'
 };
 
 function lookupOrigin(nameVal) {
   const originInp = document.getElementById('inp-origin');
   const loadingEl = document.getElementById('origin-loading');
   if (!nameVal || originInp.value.trim()) return;
-  const key = nameVal.toLowerCase().trim();
-  const match = originDB[key];
+  const match = originDB[nameVal.toLowerCase().trim()];
   if (match) {
     loadingEl.style.display = 'block';
     loadingEl.textContent = 'Looking up meaning...';
@@ -490,12 +588,10 @@ function lookupOrigin(nameVal) {
   }
 }
 
-document.getElementById('inp-name').addEventListener('input', function() {
+document.getElementById('inp-name').addEventListener('input', function () {
   clearTimeout(originLookupTimer);
   const val = this.value.trim();
-  if (val.length >= 3) {
-    originLookupTimer = setTimeout(() => lookupOrigin(val), 500);
-  }
+  if (val.length >= 3) originLookupTimer = setTimeout(() => lookupOrigin(val), 500);
 });
 
 /* ── Confetti ── */
@@ -503,13 +599,9 @@ const canvas = document.getElementById('confetti-canvas');
 const ctx = canvas.getContext('2d');
 let confettiParticles = [];
 let confettiFrame = null;
-
 const confettiColors = ['#B3C8F7','#6B96EE','#3D6DD6','#D8E3FB','#1E3F8A','#f0f4fe','#ffffff','#a8d8b0','#f7c97e'];
 
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
@@ -517,16 +609,11 @@ function launchConfetti() {
   confettiParticles = [];
   for (let i = 0; i < 120; i++) {
     confettiParticles.push({
-      x: Math.random() * canvas.width,
-      y: -10 - Math.random() * 200,
-      w: 6 + Math.random() * 8,
-      h: 3 + Math.random() * 5,
+      x: Math.random() * canvas.width, y: -10 - Math.random() * 200,
+      w: 6 + Math.random() * 8, h: 3 + Math.random() * 5,
       color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
-      angle: Math.random() * Math.PI * 2,
-      spin: (Math.random() - 0.5) * 0.2,
-      vx: (Math.random() - 0.5) * 3,
-      vy: 2 + Math.random() * 4,
-      opacity: 1
+      angle: Math.random() * Math.PI * 2, spin: (Math.random() - 0.5) * 0.2,
+      vx: (Math.random() - 0.5) * 3, vy: 2 + Math.random() * 4, opacity: 1
     });
   }
   if (confettiFrame) cancelAnimationFrame(confettiFrame);
@@ -536,64 +623,87 @@ function launchConfetti() {
 function animateConfetti() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   confettiParticles.forEach(p => {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.angle += p.spin;
-    p.vy += 0.05;
+    p.x += p.vx; p.y += p.vy; p.angle += p.spin; p.vy += 0.05;
     if (p.y > canvas.height * 0.7) p.opacity -= 0.025;
     ctx.save();
     ctx.globalAlpha = Math.max(0, p.opacity);
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.angle);
+    ctx.translate(p.x, p.y); ctx.rotate(p.angle);
     ctx.fillStyle = p.color;
     ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
     ctx.restore();
   });
   confettiParticles = confettiParticles.filter(p => p.opacity > 0);
-  if (confettiParticles.length > 0) {
-    confettiFrame = requestAnimationFrame(animateConfetti);
-  } else {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
+  if (confettiParticles.length > 0) { confettiFrame = requestAnimationFrame(animateConfetti); }
+  else { ctx.clearRect(0, 0, canvas.width, canvas.height); }
 }
 
-/* ── Submit ── */
-function submitName() {
+/* ── Submit name ── */
+async function submitName() {
   const nameVal = document.getElementById('inp-name').value.trim();
-  const whoVal = document.getElementById('inp-who').value.trim();
-  const err = document.getElementById('form-error');
-  if (!nameVal || !whoVal) { err.textContent = 'Please enter a name and your name.'; err.style.display = 'block'; return; }
+  const whoVal  = document.getElementById('inp-who').value.trim();
+  const err     = document.getElementById('form-error');
+
+  if (!nameVal || !whoVal) {
+    err.textContent = 'Please enter a name and your name.';
+    err.style.display = 'block'; return;
+  }
   if (names.find(n => n.name.toLowerCase() === nameVal.toLowerCase())) {
-    err.textContent = 'That name has already been suggested!'; err.style.display = 'block'; return;
+    err.textContent = 'That name has already been suggested!';
+    err.style.display = 'block'; return;
   }
   err.style.display = 'none';
-  names.push({
-    id: nextId++,
+
+  const btn = document.querySelector('.submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+
+  const { data, error } = await sb.from('names').insert({
     name: nameVal,
-    who: whoVal,
-    origin: document.getElementById('inp-origin').value.trim(),
-    note: document.getElementById('inp-note').value.trim(),
-    votes: 0, userVote: 0, comments: [], open: false
+    suggested_by: whoVal,
+    origin: document.getElementById('inp-origin').value.trim() || null,
+    note:   document.getElementById('inp-note').value.trim()   || null,
+    votes: 0
+  }).select().single();
+
+  btn.disabled = false;
+  btn.textContent = 'Add name';
+
+  if (error) {
+    err.textContent = 'Something went wrong. Please try again.';
+    err.style.display = 'block'; return;
+  }
+
+  names.push({
+    id: data.id, name: data.name, who: data.suggested_by,
+    origin: data.origin || '', note: data.note || '',
+    votes: 0, userVote: 0, comments: [], open: false, createdAt: data.created_at
   });
+
   ['inp-name','inp-who','inp-origin','inp-note'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('origin-loading').style.display = 'none';
-  save();
+
   render();
   launchConfetti();
 }
 
+/* ── Render ── */
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function render() {
   const list = sorted();
-  const el = document.getElementById('names-list');
-  document.getElementById('count-label').textContent = list.length + ' name' + (list.length !== 1 ? 's' : '');
-  if (!list.length) { el.innerHTML = '<div class="empty">No names yet — be the first to suggest one!</div>'; return; }
+  const el   = document.getElementById('names-list');
+  document.getElementById('count-label').textContent =
+    list.length + ' name' + (list.length !== 1 ? 's' : '');
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">No names yet — be the first to suggest one!</div>';
+    return;
+  }
 
   el.innerHTML = list.map(n => {
-    const upOn = n.userVote === 1 ? 'on' : '';
+    const upOn   = n.userVote ===  1 ? 'on' : '';
     const downOn = n.userVote === -1 ? 'on' : '';
     const commentCount = n.comments.length;
     const commentLabel = n.open
@@ -608,17 +718,17 @@ function render() {
         <div class="comment-form">
           <input class="inp-who" id="cwho-${n.id}" placeholder="Your name" maxlength="30" />
           <input class="inp-text" id="ctxt-${n.id}" placeholder="Write a comment..." maxlength="140"
-            onkeydown="if(event.key==='Enter')addComment(${n.id})" />
-          <button class="comment-post-btn" onclick="addComment(${n.id})">Post</button>
+            onkeydown="if(event.key==='Enter')addComment('${n.id}')" />
+          <button class="comment-post-btn" onclick="addComment('${n.id}')">Post</button>
         </div>
       </div>` : '';
 
     return `<div class="name-card">
       <div class="card-top">
         <div class="vote-col">
-          <button class="vote-btn up ${upOn}" onclick="vote(${n.id},1)" title="Upvote">▲</button>
+          <button class="vote-btn up ${upOn}" onclick="vote('${n.id}',1)" title="Upvote">▲</button>
           <span class="vote-score">${n.votes}</span>
-          <button class="vote-btn down ${downOn}" onclick="vote(${n.id},-1)" title="Downvote">▼</button>
+          <button class="vote-btn down ${downOn}" onclick="vote('${n.id}',-1)" title="Downvote">▼</button>
         </div>
         <div class="card-body">
           <div class="card-name-row">
@@ -627,7 +737,7 @@ function render() {
           </div>
           <div class="card-by">Suggested by ${esc(n.who)}</div>
           ${n.note ? `<div class="card-note">${esc(n.note)}</div>` : ''}
-          <button class="comments-toggle" onclick="toggleComments(${n.id})">${commentLabel}</button>
+          <button class="comments-toggle" onclick="toggleComments('${n.id}')">${commentLabel}</button>
         </div>
       </div>
       ${commentsHtml}
@@ -635,7 +745,8 @@ function render() {
   }).join('');
 }
 
-render();
+/* ── Boot ── */
+loadNames();
 </script>
 </body>
 </html>
